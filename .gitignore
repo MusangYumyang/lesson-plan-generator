@@ -1,0 +1,25 @@
+# 비밀 정보 (API 키 등)
+.env
+.env.*
+
+# 파이썬이 자동으로 만드는 임시 파일
+__pycache__/
+*.pyc
+
+# 프로그램 실행 중 쌓이는 데이터
+data/store.json
+
+# 원본 데이터로 다시 만들 수 있는 결과물
+02_output/
+
+# 백업 폴더
+99_backup/
+
+# 내 컴퓨터 전용 설정
+.vscode/
+.claude/settings.local.json
+
+# 운영체제가 만드는 파일
+Thumbs.db
+desktop.ini
+.DS_Store
