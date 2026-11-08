@@ -30,7 +30,8 @@ Key docs it points to:
 - Don't frame learners around family roles or default to repeatedly calling them "어르신" — learners are senior but AI-literate, working individually rather than in pairs/groups.
 - If a real app screen or screenshot can't be fetched due to network limits, say so explicitly and name the substitute used.
 - Keep generated 교안 (lesson plans) and 아티팩트 (artifacts) as separate entities, and keep each instructor's data scoped to that instructor (no cross-instructor bleed).
-- Locking, duplicate-lecture detection, and login are named in the PRD but not yet placed in the screen flow ([idea/flow.md](idea/flow.md)) or [tasks.md](tasks.md). Don't invent where they go — extend the requirement docs first (see [tasks.md](tasks.md)'s "화면이 정해지지 않은 기능" section).
+- Artifact locking is placed on the 저장된 목록 screen: each artifact card has a 잠그기/풀기 toggle that sets `locked`, and a locked artifact's student share screen blocks 프롬프트 만들기 (see [tasks.md](tasks.md)).
+- Duplicate-lecture detection and login are named in the PRD but not yet placed in the screen flow ([idea/flow.md](idea/flow.md)) or [tasks.md](tasks.md). Don't invent where they go — extend the requirement docs first (see [tasks.md](tasks.md)'s "화면이 정해지지 않은 기능" section).
 
 ## Working with Notion
 

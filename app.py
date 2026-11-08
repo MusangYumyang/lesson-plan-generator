@@ -108,6 +108,15 @@ def find_item(kind: str, item_id: str, any_owner: bool = False) -> dict | None:
     return next((i for i in pool if i["id"] == item_id), None)
 
 
+def set_locked(artifact_id: str, locked: bool) -> None:
+    """현재 강사 소유 아티팩트의 잠금 상태를 바꿔 저장한다."""
+    store = load_store()
+    for artifact in mine(store["artifacts"]):
+        if artifact["id"] == artifact_id:
+            artifact["locked"] = locked
+    save_store(store)
+
+
 def now_iso() -> str:
     return dt.datetime.now().isoformat(timespec="seconds")
 
@@ -467,7 +476,7 @@ def run_generation() -> None:
             "title": spec["title"],
             "kind": "prompt_generator",
             "spec": spec,
-            "locked": False,  # 잠금 UI는 화면 흐름에 아직 배치되지 않음 (tasks.md 참고)
+            "locked": False,  # 저장된 목록의 잠그기 버튼으로 바꾼다 (tasks.md 참고)
             "created_at": now_iso(),
         }
     )
@@ -659,7 +668,7 @@ def screen_list() -> None:
                         f"{artifact['created_at'][:10]} · {'🔒 잠김' if artifact.get('locked') else '🔓 열림'}</span>",
                         unsafe_allow_html=True,
                     )
-                    c1, c2 = st.columns(2)
+                    c1, c2, c3 = st.columns(3)
                     with c1:
                         if st.button("열기", key=f"artifact_open_{artifact['id']}"):
                             st.session_state["current_artifact_id"] = artifact["id"]
@@ -668,6 +677,14 @@ def screen_list() -> None:
                     with c2:
                         if st.button("오픈채팅방 공유", key=f"artifact_share_{artifact['id']}"):
                             st.session_state["share_target"] = ("artifact", artifact["id"])
+                    with c3:
+                        if artifact.get("locked"):
+                            if st.button("🔓 풀기", key=f"artifact_unlock_{artifact['id']}"):
+                                set_locked(artifact["id"], False)
+                                st.rerun()
+                        elif st.button("🔒 잠그기", key=f"artifact_lock_{artifact['id']}"):
+                            set_locked(artifact["id"], True)
+                            st.rerun()
 
     target = st.session_state.get("share_target")
     if target:
