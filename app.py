@@ -820,8 +820,22 @@ CHAT_CSS = """
 """
 
 
+CHAT_MAX_CHARS = 300  # 답이 이 글자 수를 넘으면 점검에서 떨어진다
+CHAT_CHECK_PASS = "강사님께 확인이 필요한 내용이에요"  # 이 말로 시작하는 답은 점검 없이 통과
+
+
+def _chat_answer_ok(answer: str) -> bool:
+    """답이 정확히 세 줄(빈 줄 없이)이고 CHAT_MAX_CHARS 자 이하인지 본다."""
+    answer = answer.strip()
+    if answer.startswith(CHAT_CHECK_PASS):
+        return True
+    lines = answer.split("\n")
+    return len(lines) == 3 and all(line.strip() for line in lines) and len(answer) <= CHAT_MAX_CHARS
+
+
 def _ask_gemini(api_key: str, text: str, tone: str) -> None:
-    """chat_log 에 AI 답 또는 안내를 붙인다. 이어서 묻기는 previous_interaction_id 로 잇는다."""
+    """chat_log 에 AI 답 또는 안내를 붙인다. 이어서 묻기는 previous_interaction_id 로 잇는다.
+    점검(_chat_answer_ok)에서 떨어지면 한 번 더 묻고, 두 번 다 떨어지면 답 대신 다시 시도 안내를 띄운다."""
     ss = st.session_state
     system = (f"{CHAT_SYSTEM}\n\n[말투] {tone}: {CHAT_TONES[tone]}\n"
               "말투는 문장 모양만 바꾼다. 짧게 쓰더라도 모르는 사실은 지어내지 말고 [확인 필요: 무엇] 으로 남긴다.")
@@ -830,10 +844,17 @@ def _ask_gemini(api_key: str, text: str, tone: str) -> None:
         kwargs = {"model": CHAT_MODEL, "input": text, "system_instruction": system, "timeout": CHAT_TIMEOUT_SECONDS}
         if ss.chat_last_id:
             kwargs["previous_interaction_id"] = ss.chat_last_id
-        interaction = client.interactions.create(**kwargs)
-        ss.chat_last_id = interaction.id
-        ss.chat_log.append({"role": "ai", "text": interaction.output_text})
-        save_log(f"[말투: {tone}]\n{text}", interaction.output_text)
+        # 다시 물을 때도 같은 앞 대화에 잇는다. 떨어진 답은 대화에 이어 붙이지 않는다
+        for _ in range(2):
+            interaction = client.interactions.create(**kwargs)
+            answer = interaction.output_text or ""
+            if _chat_answer_ok(answer):
+                ss.chat_last_id = interaction.id
+                ss.chat_log.append({"role": "ai", "text": answer})
+                save_log(f"[말투: {tone}]\n{text}", answer)
+                return
+        ss.chat_log.append({"role": "경고", "text": "다시 시도해 주세요"})
+        save_log(f"[말투: {tone}]\n{text}", f"[점검 두 번 실패, 화면에 안 보임]\n{answer}")
     except Exception as err:  # noqa: BLE001
         if "API_KEY_INVALID" in str(err):
             msg = ("오류", f"키가 올바르지 않습니다. .env 의 {GEMINI_KEY_NAME} 값을 새 키로 바꾼 뒤 화면을 새로 고치세요.")
