@@ -356,7 +356,7 @@ def share_message(lesson: dict | None, artifact: dict | None) -> str:
 # ---------------------------------------------------------------------------
 def screen_topic() -> None:
     st.title("📘 교안 자동 생성기")
-    st.caption("강의 주제를 넣으면 수업을 그대로 진행할 수 있는 상세 교안과 실습용 아티팩트를 만듭니다.")
+    st.caption("강사용 화면입니다. 수강생 화면은 왼쪽 맨 아래에서 미리 볼 수 있어요.")
 
     with st.form("topic_form"):
         topic = st.text_input(
@@ -517,11 +517,11 @@ def render_artifact_card(artifact: dict) -> None:
     spec = artifact["spec"]
     st.markdown(f"### 🧰 {spec['title']}")
     st.markdown(spec["purpose"])
-    with st.expander("수강생 안내문", expanded=False):
-        st.markdown(spec["student_guide"])
     st.markdown("**입력 칸**")
     for f in spec["fields"]:
         st.markdown(f"- **{f['label']}** — {f['placeholder']} (예: {f['example']})")
+    with st.expander("수강생 안내문", expanded=False):
+        st.markdown(spec["student_guide"])
     with st.expander("프롬프트 틀 보기"):
         st.code(spec["prompt_template"], language="text")
     with st.expander("예시 결과 프롬프트"):
@@ -587,35 +587,42 @@ def screen_result() -> None:
 # ---------------------------------------------------------------------------
 # 화면 4. 프롬프트 생성기
 # ---------------------------------------------------------------------------
-def prompt_generator_form(artifact: dict, key_prefix: str, allow_generate: bool) -> None:
+def prompt_generator_form(artifact: dict, key_prefix: str, allow_generate: bool,
+                          guide_area=None, form_area=None, result_area=None) -> None:
+    """안내문·입력 폼·결과를 각각 guide_area·form_area·result_area 에 그린다.
+    자리를 주지 않으면 지금처럼 본문에 안내문 → 폼 → 결과 차례로 쌓인다."""
     spec = artifact["spec"]
-    st.markdown(spec["student_guide"])
+    guide_area = guide_area or st.container()
+    form_area = form_area or st.container()
+    result_area = result_area or st.container()
+    guide_area.markdown(spec["student_guide"])
 
-    with st.form(f"{key_prefix}_form"):
+    with form_area, st.form(f"{key_prefix}_form"):
         values: dict[str, str] = {}
         for f in spec["fields"]:
             values[f["key"]] = st.text_input(f["label"], placeholder=f"{f['placeholder']} (예: {f['example']})")
         extra = st.text_area("추가 조건 (선택)", placeholder="예: 결과를 표로 보여줘, 300자 이내로")
         submitted = st.form_submit_button("프롬프트 만들기", type="primary", disabled=not allow_generate)
 
-    if submitted:
-        filled = "\n".join(f"- {f['label']} ({f['key']}): {values[f['key']] or '(비움)'}" for f in spec["fields"])
-        user_msg = (
-            f"<아티팩트 틀>\n{spec['prompt_template']}\n</아티팩트 틀>\n\n"
-            f"<수강생 입력>\n{filled}\n- 추가 조건: {extra or '(없음)'}\n</수강생 입력>"
-        )
-        try:
-            with st.container(border=True):
-                result = st.write_stream(stream_text(PROMPT_SYSTEM, user_msg, effort="low", max_tokens=4000))
-            st.session_state["generated_prompt"] = result
-        except Exception as err:  # noqa: BLE001
-            st.error(describe_api_error(err))
-            return
-        save_log(user_msg, result)  # 공유 링크로 수강생이 쓴 것도 남는다
+    with result_area:
+        if submitted:
+            filled = "\n".join(f"- {f['label']} ({f['key']}): {values[f['key']] or '(비움)'}" for f in spec["fields"])
+            user_msg = (
+                f"<아티팩트 틀>\n{spec['prompt_template']}\n</아티팩트 틀>\n\n"
+                f"<수강생 입력>\n{filled}\n- 추가 조건: {extra or '(없음)'}\n</수강생 입력>"
+            )
+            try:
+                with st.container(border=True):
+                    result = st.write_stream(stream_text(PROMPT_SYSTEM, user_msg, effort="low", max_tokens=4000))
+                st.session_state["generated_prompt"] = result
+            except Exception as err:  # noqa: BLE001
+                st.error(describe_api_error(err))
+                return
+            save_log(user_msg, result)  # 공유 링크로 수강생이 쓴 것도 남는다
 
-    if st.session_state.get("generated_prompt"):
-        st.markdown("**완성 프롬프트** (아래 상자 오른쪽 위 복사 버튼을 누르세요)")
-        st.code(st.session_state["generated_prompt"], language="text")
+        if st.session_state.get("generated_prompt"):
+            st.markdown("**완성 프롬프트** (아래 상자 오른쪽 위 복사 버튼을 누르세요)")
+            st.code(st.session_state["generated_prompt"], language="text")
 
 
 def screen_prompt() -> None:
@@ -628,7 +635,11 @@ def screen_prompt() -> None:
 
     st.title("프롬프트 생성기")
     st.markdown(f"### 🧰 {artifact['title']}")
-    prompt_generator_form(artifact, key_prefix="instructor", allow_generate=True)
+    # 입력 폼은 왼쪽 메뉴 아래, 안내문과 결과는 가운데
+    with st.sidebar:
+        st.markdown("---")
+        form_area = st.container()
+    prompt_generator_form(artifact, key_prefix="instructor", allow_generate=True, form_area=form_area)
 
     st.divider()
     if st.button("결과 화면으로 돌아가기"):
@@ -750,7 +761,9 @@ def screen_shared(share: str) -> None:
         st.title(f"🧰 {artifact['title']}")
         if artifact.get("locked"):
             st.warning("이 아티팩트는 강사가 잠가 두었습니다. 수업 시간에 강사가 열면 사용할 수 있습니다.")
-        prompt_generator_form(artifact, key_prefix="student", allow_generate=not artifact.get("locked"))
+        tab_input, tab_guide = st.tabs(["✍️ 조건 넣기", "📖 사용법"])
+        prompt_generator_form(artifact, key_prefix="student", allow_generate=not artifact.get("locked"),
+                              guide_area=tab_guide, form_area=tab_input, result_area=tab_input)
         return
 
     st.error("올바르지 않은 공유 링크입니다.")
@@ -982,6 +995,10 @@ def main() -> None:
         if st.button(f"🗂 {AI_LOG_SCREEN}", use_container_width=True,
                      disabled=current == AI_LOG_SCREEN):
             go(AI_LOG_SCREEN)
+        # 지금 보고 있는 아티팩트의 수강생 공유 화면을 새 탭에서 연다
+        artifact_id = st.session_state.get("current_artifact_id") or ""
+        st.link_button("🙋 수강생 화면으로 보기", share_url("artifact", artifact_id), use_container_width=True,
+                       disabled=not reachable["프롬프트 생성기"])
 
     screen = st.session_state["screen"]
     if screen == "주제 입력":
