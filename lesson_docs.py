@@ -17,6 +17,7 @@ import uuid
 import streamlit as st
 
 from guestbook import get_client
+from korean_page import korean_page
 
 BUCKET = "lesson_docs"
 MAX_MB = 20
@@ -157,4 +158,5 @@ def render_lesson_docs() -> None:
 
 if __name__ == "__main__":
     st.set_page_config(page_title="교안 원본 보관함", page_icon=CAT_ICON_URL, layout="centered")
+    korean_page()  # 크롬이 영어 페이지로 알고 다시 번역하지 않게 한다
     render_lesson_docs()

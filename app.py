@@ -29,6 +29,7 @@ from google import genai
 
 from ai_log import render_ai_logs, save_log
 from guestbook import render_guestbook
+from korean_page import korean_page
 
 # ---------------------------------------------------------------------------
 # 설정
@@ -58,6 +59,7 @@ CHAT_TIMEOUT_SECONDS = 30  # 이 시간(초) 안에 답이 없으면 기다리�
 load_dotenv(APP_DIR / ".env", override=True)
 
 st.set_page_config(page_title="교안 자동 생성기", page_icon="📘", layout="centered")
+korean_page()  # 크롬이 영어 페이지로 알고 다시 번역하지 않게 한다
 
 # 모바일에서 버튼·입력칸이 작아지지 않도록 최소한의 스타일만 적용
 st.markdown(
@@ -554,6 +556,17 @@ def screen_result() -> None:
     with tab_artifact:
         if artifact:
             render_artifact_card(artifact)
+            st.markdown(
+                f"<span class='small-muted'>{'🔒 잠김' if artifact.get('locked') else '🔓 열림'}</span>",
+                unsafe_allow_html=True,
+            )
+            if artifact.get("locked"):
+                if st.button("🔓 풀기", key=f"result_unlock_{artifact['id']}"):
+                    set_locked(artifact["id"], False)
+                    st.rerun()
+            elif st.button("🔒 잠그기", key=f"result_lock_{artifact['id']}"):
+                set_locked(artifact["id"], True)
+                st.rerun()
         else:
             st.info("이 교안에 연결된 아티팩트가 없습니다.")
 
@@ -767,22 +780,8 @@ def screen_ai_logs() -> None:
 # 3D 고양이 아이콘: Microsoft Fluent Emoji (MIT 라이선스, https://github.com/microsoft/fluentui-emoji)
 CHAT_ICON_URL = "https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/Cat%20face/3D/cat_face_3d.png"
 
-CHAT_SYSTEM = """\
-너는 시니어 학습자를 가르치는 오프라인 AI 강사의 조수다. 강사가 받은 문의 글을 넣으면, 강사가 그대로 보내거나 조금만 고쳐 보낼 수 있는 답변 초안을 쓴다.
-
-[형식 — 어떤 말이 들어와도 반드시 지킨다]
-- 답은 정확히 세 문장이다. 두 문장도 네 문장도 안 된다. 인사도 한 문장으로 센다.
-- 문장마다 줄을 바꾼다. 한 줄에 한 문장, 모두 세 줄이다. 빈 줄, 목록 기호(-, 1.), 제목은 쓰지 않는다.
-- 문의가 아닌 말(인사, 잡담, 엉뚱한 질문)이 들어와도 세 문장, 세 줄로 답한다.
-- [확인 필요: 무엇] 은 문장 안에 넣고 따로 줄을 만들지 않는다.
-
-[쓰는 법]
-- 존댓말로 쓴다. 말투는 맨 아래 [말투] 를 따르되, 위 [형식] 이 말투보다 먼저다.
-- 문의한 내용에 답한다. 질문이 여러 개면 세 문장 안에서 순서대로 답한다.
-- 수강생은 AI 를 어느 정도 써 본 성인 학습자다. 가족 역할로 부르거나 '어르신' 같은 호칭을 쓰지 않는다.
-- 사실(수업 시간, 장소, 준비물, 비용 등)은 강사가 대화에서 알려 준 것만 쓴다. 모르는 사실은 지어내지 말고 [확인 필요: 무엇] 으로 남긴다.
-- 강사가 "더 짧게", "시간은 10시야" 처럼 고쳐 달라고 하면 바로 앞 초안을 고쳐 다시 쓴다.
-- 답변 초안만 출력한다. 앞뒤 설명, 제목, 따옴표는 붙이지 않는다."""
+# 상담 챗봇의 고정 지시문. 글은 chat_system.md 에 있다
+CHAT_SYSTEM = (APP_DIR / "chat_system.md").read_text(encoding="utf-8").rstrip("\n")
 
 # 채팅창의 말투 칸. 고른 말투의 설명이 CHAT_SYSTEM 끝에 [말투] 로 붙는다
 CHAT_TONES = {
@@ -942,9 +941,19 @@ def main() -> None:
         st.markdown(f"**모델:** {MODEL}")
         st.markdown("---")
         current = st.session_state["screen"]
+        # 갈 수 있는 화면만 누를 수 있다: 주제가 있어야 기존 자료 확인, 교안·아티팩트가 있어야 그 화면이 열린다
+        reachable = {
+            "주제 입력": True,
+            "기존 자료 확인": bool(st.session_state["topic"]),
+            "교안 및 아티팩트": find_item("lessons", st.session_state.get("current_lesson_id") or "") is not None,
+            "프롬프트 생성기": find_item("artifacts", st.session_state.get("current_artifact_id") or "") is not None,
+            "저장된 목록": True,
+        }
         for name in SCREENS:
-            marker = "➡️ " if name == current else ""
-            st.markdown(f"{marker}{name}")
+            if name == current:
+                st.markdown(f"➡️ {name}")
+            elif st.button(name, key=f"nav_{name}", use_container_width=True, disabled=not reachable[name]):
+                go(name)
         st.markdown("---")
         if st.button(f"📝 {GUESTBOOK_SCREEN}", use_container_width=True,
                      disabled=current == GUESTBOOK_SCREEN):
