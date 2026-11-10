@@ -28,6 +28,7 @@ import uuid
 
 import anthropic
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 
 from ai_log import render_ai_logs, save_log
@@ -130,6 +131,53 @@ def set_locked(artifact_id: str, locked: bool) -> None:
     save_store(store)
 
 
+def add_html_artifact(lesson_id: str, html: str, request: str) -> str | None:
+    """현재 강사의 교안에 HTML 아티팩트를 새로 붙이고 그 id 를 돌려준다."""
+    store = load_store()
+    lesson = next((l for l in mine(store["lessons"]) if l["id"] == lesson_id), None)
+    if not lesson:
+        return None
+    artifact_id = str(uuid.uuid4())
+    store["artifacts"].append(
+        {
+            "id": artifact_id,
+            "owner": OWNER,
+            "lesson_id": lesson_id,
+            "title": html_title(html, f"{lesson['title']} 실습"),
+            "kind": "practice_html",
+            "html": html,
+            "request": request,  # 강사가 처음 쓴 요청 (비어 있으면 교안만 보고 만든 것)
+            "versions": [],  # 고치기 전 html 을 차례로 쌓는다
+            "locked": False,
+            "created_at": now_iso(),
+        }
+    )
+    lesson["artifact_id"] = artifact_id
+    save_store(store)
+    return artifact_id
+
+
+def replace_artifact_html(artifact_id: str, html: str) -> None:
+    """지금 html 을 versions 에 쌓고 새 html 로 바꾼다."""
+    store = load_store()
+    for artifact in mine(store["artifacts"]):
+        if artifact["id"] == artifact_id:
+            artifact.setdefault("versions", []).append(artifact["html"])
+            artifact["html"] = html
+            artifact["title"] = html_title(html, artifact["title"])
+    save_store(store)
+
+
+def revert_artifact_html(artifact_id: str) -> None:
+    """versions 의 마지막 html 로 되돌린다."""
+    store = load_store()
+    for artifact in mine(store["artifacts"]):
+        if artifact["id"] == artifact_id and artifact.get("versions"):
+            artifact["html"] = artifact["versions"].pop()
+            artifact["title"] = html_title(artifact["html"], artifact["title"])
+    save_store(store)
+
+
 def now_iso() -> str:
     return dt.datetime.now().isoformat(timespec="seconds")
 
@@ -202,43 +250,36 @@ LESSON_SYSTEM = """당신은 시니어 대상 오프라인 AI 수업을 10년 �
 8. 강사 메모: 시간 부족 시 줄일 부분, 여유 있을 때 더할 부분
 """
 
-ARTIFACT_SYSTEM = """당신은 시니어 AI 수업용 '프롬프트 생성기' 아티팩트를 설계합니다.
-아티팩트는 수강생이 수업 중에 링크로 열어 쓰는 화면입니다. 수강생이 몇 가지 칸만 채우면
-수업 맥락(대상, 기기, 수업 흐름)이 이미 녹아 있는 완성 프롬프트가 나와야 합니다.
+ARTIFACT_HTML_SYSTEM = """당신은 시니어 AI 수업용 '단계별 실습 화면'을 만드는 웹 개발자이자 교육 설계자입니다.
+수강생이 수업 중에 링크로 열어, 강사 도움 없이 혼자 한 단계씩 따라 하며 자기 프롬프트를 완성하는 화면을
+HTML 한 장으로 씁니다.
 
-규칙
-- 한국어. 수강생을 "수강생" 또는 "여러분"으로 부른다. "어르신" 반복 호칭, 가족 역할 프레이밍 금지.
-- 입력 칸(fields)은 3~5개. 각 칸에는 짧은 라벨, 안내 문구(placeholder), 예시 값을 넣는다.
-- prompt_template 에는 각 칸의 key 를 {key} 형태로 넣는다. 예: "{topic}에 대해 ..."
-- 결과 프롬프트는 수강생이 ChatGPT·Gemini·Claude 등 어떤 챗봇에 붙여 넣어도 바로 쓸 수 있게 완결된 문장으로 쓴다.
+수강생
+- AI 를 다룰 줄 아는 시니어. 기초 설명은 짧게, 바로 해 볼 수 있게 쓴다.
+- 혼자 하는 실습이다. 짝·조 활동이나 "옆 사람과" 같은 지시를 넣지 않는다.
+- 부를 때는 "수강생" 또는 "여러분". "어르신"이라고 반복해 부르지 않는다. 자녀·손주 등 가족 역할로 묶지 않는다.
+
+출력 형식
+- <!DOCTYPE html> 로 시작해 </html> 로 끝나는 HTML 전체만 출력한다. 설명, 머리말, 코드 블록 표시(```)는 붙이지 않는다.
+- CSS 는 <style>, JS 는 <script> 로 한 파일 안에 넣어 이 파일만으로 열리게 한다.
+  외부 파일은 구글 폰트 <link> 만 허용하고, 그 밖의 라이브러리·이미지·CDN 은 쓰지 않는다.
+- <html lang="ko">, <meta charset="utf-8">, <meta name="viewport" content="width=device-width, initial-scale=1">,
+  <title> 에 실습 이름을 넣는다.
+- alert·confirm·prompt 창과 localStorage 는 쓰지 않는다.
+
+화면 구성
+- 휴대폰 한 화면에 한 단계씩 보인다. 단계는 4~7개. 첫 단계는 무엇을 만들지 짧은 안내, 마지막 단계는 결과.
+- 위: 단계 번호 버튼(1, 2, 3 …). 지금 단계가 눈에 띄고, 누르면 그 단계로 간다.
+- 아래: 「이전」「다음」 큰 버튼. 첫 단계의 이전, 마지막 단계의 다음은 숨기거나 막는다.
+- 본문 글씨 19px 이상, 모든 버튼·칩 높이 50px 이상, 누르는 곳 사이 간격은 넉넉히.
+- 고를 거리는 눌러서 담고 다시 누르면 빠지는 칩으로 만든다. 고른 칩은 색과 ✓ 로 구분한다.
+  직접 쓰는 칸은 꼭 필요한 곳에만 둔다.
+- 마지막 단계: 고르고 쓴 내용을 합친 완성 프롬프트와 「복사하기」 버튼. navigator.clipboard 가 막히면
+  textarea 선택 + document.execCommand('copy') 로 대신하고, 복사되면 "복사했습니다" 를 화면에 보여 준다.
+  완성 프롬프트는 ChatGPT·Gemini·Claude 어디에 붙여 넣어도 바로 쓸 수 있는 완결된 한국어 문장이어야 한다.
+- 밝은 화면·어두운 화면 둘 다 보기 좋게: 색은 CSS 변수로 정하고 @media (prefers-color-scheme: dark) 에서 바꾼다.
+  글자와 바탕 대비를 충분히 두고, body 에 바탕색을 꼭 준다.
 """
-
-ARTIFACT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string", "description": "아티팩트 이름 (예: '여행 일정 프롬프트 생성기')"},
-        "purpose": {"type": "string", "description": "이 아티팩트로 수강생이 얻는 것, 1~2문장"},
-        "student_guide": {"type": "string", "description": "수강생에게 보여줄 사용 안내, 3~5문장"},
-        "fields": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string", "description": "영문 snake_case 키"},
-                    "label": {"type": "string"},
-                    "placeholder": {"type": "string"},
-                    "example": {"type": "string"},
-                },
-                "required": ["key", "label", "placeholder", "example"],
-                "additionalProperties": False,
-            },
-        },
-        "prompt_template": {"type": "string", "description": "{key} 자리표시자가 들어간 프롬프트 틀"},
-        "example_output": {"type": "string", "description": "예시 값을 넣었을 때 완성되는 프롬프트"},
-    },
-    "required": ["title", "purpose", "student_guide", "fields", "prompt_template", "example_output"],
-    "additionalProperties": False,
-}
 
 PROMPT_SYSTEM = """당신은 시니어 AI 수업에서 쓰는 프롬프트 작성 도우미입니다.
 주어진 아티팩트 틀과 수강생이 입력한 조건을 바탕으로, 어떤 챗봇에 붙여 넣어도 바로 쓸 수 있는
@@ -289,27 +330,36 @@ def stream_text(system: str, user: str, effort: str, max_tokens: int):
         _check_stop(stream.get_final_message())
 
 
-def generate_artifact_spec(topic: str, lesson_md: str) -> dict:
-    client = get_client()
-    user = (
-        f"강의 주제: {topic}\n\n"
-        "아래는 이 주제의 교안입니다. 교안의 실습과 맞물리는 프롬프트 생성기 아티팩트를 설계하세요.\n\n"
-        f"<교안>\n{lesson_md}\n</교안>"
-    )
-    with client.beta.messages.stream(
-        model=MODEL,
-        max_tokens=16000,
-        system=ARTIFACT_SYSTEM,
-        messages=[{"role": "user", "content": user}],
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": ARTIFACT_SCHEMA}},
-        betas=[FALLBACK_BETA],
-        fallbacks="default",
-    ) as stream:
-        message = stream.get_final_message()
-    _check_stop(message)
-    text = next(b.text for b in message.content if b.type == "text")
-    save_log(user, text)
-    return json.loads(text)
+def _clean_html(text: str) -> str:
+    """응답에서 <!DOCTYPE html> ~ </html> 부분만 남긴다 (앞뒤 설명·코드 블록 표시 제거)."""
+    low = text.lower()
+    start = next((i for i in (low.find("<!doctype"), low.find("<html")) if i >= 0), -1)
+    if start < 0:
+        raise ValueError("받은 응답에서 HTML 을 찾지 못했습니다. 다시 눌러 주세요.")
+    end = low.rfind("</html>")
+    return text[start:end + len("</html>")] if end > start else text[start:]
+
+
+def html_title(html: str, fallback: str) -> str:
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    return (m and m.group(1).strip()) or fallback
+
+
+def generate_artifact_html(user: str) -> str:
+    """HTML 한 장을 받아 온다. 길어서 받은 글자 수와 끝부분을 화면에 계속 보여 준다."""
+    received = ""
+    with st.status("실습 화면(HTML) 만드는 중… 1~3분 걸립니다", expanded=True) as status:
+        counter, tail = st.empty(), st.empty()
+        for i, chunk in enumerate(stream_text(ARTIFACT_HTML_SYSTEM, user, effort="medium", max_tokens=32000)):
+            received += chunk
+            if i % 20 == 0:
+                counter.markdown(f"받은 글자 수: **{len(received):,}자**")
+                tail.code(received[-600:], language="html")
+        counter.markdown(f"받은 글자 수: **{len(received):,}자**")
+        status.update(label="실습 화면 완성", state="complete", expanded=False)
+    html = _clean_html(received)
+    save_log(user, html)
+    return html
 
 
 def describe_api_error(err: Exception) -> str:
@@ -373,8 +423,8 @@ def share_message(lesson: dict | None, artifact: dict | None) -> str:
 # ---------------------------------------------------------------------------
 # 하는 일 세 가지: PRD.md 기능 요구사항 1·5·3번 중 지금 실제로 되는 것만 (이미지 생성·로그인은 빼 둠)
 LANDING_FEATURES = [
-    ("교안과 실습 아티팩트를 한 번에",
-     "주제만 넣으면 설명·실습 교안과 프롬프트 생성기가 함께 나옵니다."),
+    ("교안을 만들고, 실습 화면은 원할 때",
+     "주제만 넣으면 교안이 나오고, 수강생이 혼자 따라 할 실습 화면은 원하는 모습으로 만들어 고칩니다."),
     ("겹치는 강의부터 확인",
      "만들기 전에 지금까지 만든 교안과 겹치는지 먼저 보여 줍니다."),
     ("링크 하나로 수업",
@@ -761,14 +811,12 @@ def run_generation() -> None:
         with st.container(border=True):
             lesson_md = st.write_stream(stream_text(LESSON_SYSTEM, user_msg, effort="high", max_tokens=32000))
         save_log(user_msg, lesson_md)
-        with st.spinner("실습용 아티팩트(프롬프트 생성기) 설계 중…"):
-            spec = generate_artifact_spec(topic, lesson_md)
     except Exception as err:  # noqa: BLE001 - 사용자에게 원인을 보여주고 멈춘다
         st.error(describe_api_error(err))
         return
 
     store = load_store()
-    lesson_id, artifact_id, record_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    lesson_id, record_id = str(uuid.uuid4()), str(uuid.uuid4())
     title = _extract_title(lesson_md) or topic
 
     store["lessons"].append(
@@ -780,20 +828,8 @@ def run_generation() -> None:
             "level": level,
             "duration": duration,
             "content_md": lesson_md,
-            "artifact_id": artifact_id,
+            "artifact_id": None,  # 아티팩트는 교안 화면에서 강사가 원할 때 만든다
             "record_id": record_id,
-            "created_at": now_iso(),
-        }
-    )
-    store["artifacts"].append(
-        {
-            "id": artifact_id,
-            "owner": OWNER,
-            "lesson_id": lesson_id,
-            "title": spec["title"],
-            "kind": "prompt_generator",
-            "spec": spec,
-            "locked": False,  # 저장된 목록의 잠그기 버튼으로 바꾼다 (tasks.md 참고)
             "created_at": now_iso(),
         }
     )
@@ -813,7 +849,7 @@ def run_generation() -> None:
     save_store(store)
 
     st.session_state["current_lesson_id"] = lesson_id
-    st.session_state["current_artifact_id"] = artifact_id
+    st.session_state["current_artifact_id"] = None
     st.session_state["generated_prompt"] = ""
     go("교안 및 아티팩트")
 
@@ -843,6 +879,91 @@ def render_artifact_card(artifact: dict) -> None:
         st.code(spec["example_output"], language="text")
 
 
+def render_lock_toggle(artifact: dict) -> None:
+    st.markdown(
+        f"<span class='small-muted'>{'🔒 잠김' if artifact.get('locked') else '🔓 열림'}</span>",
+        unsafe_allow_html=True,
+    )
+    if artifact.get("locked"):
+        if st.button("🔓 풀기", key=f"result_unlock_{artifact['id']}"):
+            set_locked(artifact["id"], False)
+            st.rerun()
+    elif st.button("🔒 잠그기", key=f"result_lock_{artifact['id']}"):
+        set_locked(artifact["id"], True)
+        st.rerun()
+
+
+def _lesson_context(lesson: dict) -> str:
+    return (
+        f"강의 주제: {lesson['topic']}\n수강생 수준: {lesson['level']}\n총 수업 시간: {lesson['duration']}분\n\n"
+        f"<교안>\n{lesson['content_md']}\n</교안>"
+    )
+
+
+def render_artifact_create(lesson: dict) -> None:
+    st.markdown("이 교안에는 아직 아티팩트가 없습니다. 수강생이 혼자 따라 할 **단계별 실습 화면**을 만듭니다.")
+    request = st.text_area(
+        "어떤 실습을 하게 하고 싶은지 (비워 두면 교안을 바탕으로 알아서 만듭니다)",
+        key=f"artifact_request_{lesson['id']}",
+        height=140,
+        placeholder="예: 교안의 실습 2처럼, 여행지·기간·관심사를 칩으로 골라 일정 짜기 프롬프트를 완성하게 해 주세요",
+    )
+    if st.button("아티팩트 만들기", type="primary", key=f"artifact_create_{lesson['id']}"):
+        user = (
+            _lesson_context(lesson)
+            + "\n\n<강사 요청>\n"
+            + (request.strip() or "(비움) 교안의 개별 실습과 맞물리는 실습을 알아서 정하세요.")
+            + "\n</강사 요청>\n\n위 교안과 요청으로 단계별 실습 화면 HTML 을 만드세요."
+        )
+        try:
+            html = generate_artifact_html(user)
+        except Exception as err:  # noqa: BLE001
+            st.error(describe_api_error(err))
+            return
+        st.session_state["current_artifact_id"] = add_html_artifact(lesson["id"], html, request.strip())
+        st.rerun()
+
+
+def render_artifact_html_editor(lesson: dict, artifact: dict) -> None:
+    st.markdown(f"### 🧰 {artifact['title']}")
+    if artifact.get("request"):
+        st.caption(f"처음 요청: {artifact['request']}")
+    components.html(artifact["html"], height=700, scrolling=True)
+
+    versions = artifact.get("versions") or []
+    # 고친 횟수를 key 에 넣어, 다시 만든 뒤에는 빈 칸으로 새로 그린다
+    feedback = st.text_area("이렇게 고쳐 주세요", key=f"artifact_fix_{artifact['id']}_{len(versions)}", height=120,
+                            placeholder="예: 3단계 칩을 더 늘리고, 마지막 프롬프트에 '표로 정리해 줘'를 넣어 주세요")
+    if st.button("고쳐서 다시 만들기", type="primary", key=f"artifact_fix_btn_{artifact['id']}"):
+        if not feedback.strip():
+            st.warning("고칠 점을 먼저 써 주세요.")
+            return
+        user = (
+            _lesson_context(lesson)
+            + f"\n\n<지금 HTML>\n{artifact['html']}\n</지금 HTML>\n\n<고칠 점>\n{feedback.strip()}\n</고칠 점>\n\n"
+            "고칠 점만 반영하고 나머지는 그대로 둔 새 HTML 전체를 처음부터 끝까지 출력하세요."
+        )
+        try:
+            html = generate_artifact_html(user)
+        except Exception as err:  # noqa: BLE001
+            st.error(describe_api_error(err))
+            return
+        replace_artifact_html(artifact["id"], html)
+        st.rerun()
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button(f"이전 것으로 되돌리기 ({len(versions)})", key=f"artifact_revert_{artifact['id']}",
+                     disabled=not versions):
+            revert_artifact_html(artifact["id"])
+            st.rerun()
+    with c2:
+        st.download_button("HTML 내려받기", data=artifact["html"].encode("utf-8"),
+                           file_name=f"{artifact['title']}.html", mime="text/html",
+                           key=f"artifact_download_{artifact['id']}")
+    render_lock_toggle(artifact)
+
+
 def screen_result() -> None:
     lesson = find_item("lessons", st.session_state.get("current_lesson_id") or "")
     if not lesson:
@@ -869,21 +990,13 @@ def screen_result() -> None:
             mime="text/markdown",
         )
     with tab_artifact:
-        if artifact:
+        if not artifact:
+            render_artifact_create(lesson)
+        elif artifact.get("html"):
+            render_artifact_html_editor(lesson, artifact)
+        else:  # 예전 방식(입력 칸 spec)으로 저장된 아티팩트
             render_artifact_card(artifact)
-            st.markdown(
-                f"<span class='small-muted'>{'🔒 잠김' if artifact.get('locked') else '🔓 열림'}</span>",
-                unsafe_allow_html=True,
-            )
-            if artifact.get("locked"):
-                if st.button("🔓 풀기", key=f"result_unlock_{artifact['id']}"):
-                    set_locked(artifact["id"], False)
-                    st.rerun()
-            elif st.button("🔒 잠그기", key=f"result_lock_{artifact['id']}"):
-                set_locked(artifact["id"], True)
-                st.rerun()
-        else:
-            st.info("이 교안에 연결된 아티팩트가 없습니다.")
+            render_lock_toggle(artifact)
 
     st.divider()
     col1, col2, col3 = st.columns(3)
@@ -950,6 +1063,11 @@ def screen_prompt() -> None:
 
     st.title("프롬프트 생성기")
     st.markdown(f"### 🧰 {artifact['title']}")
+    if artifact.get("html"):
+        components.html(artifact["html"], height=700, scrolling=True)
+        if st.button("결과 화면으로 돌아가기"):
+            go("교안 및 아티팩트")
+        return
     # 입력 폼은 왼쪽 메뉴 아래, 안내문과 결과는 가운데
     with st.sidebar:
         st.markdown("---")
@@ -1072,6 +1190,13 @@ def screen_shared(share: str) -> None:
         artifact = find_item("artifacts", item_id, any_owner=True)
         if not artifact:
             st.error("아티팩트를 찾을 수 없습니다.")
+            return
+        if artifact.get("html"):
+            if artifact.get("locked"):
+                st.title(f"🧰 {artifact['title']}")
+                st.warning("이 실습 화면은 강사가 잠가 두었습니다. 수업 시간에 강사가 열면 볼 수 있습니다.")
+            else:
+                components.html(artifact["html"], height=900, scrolling=True)
             return
         st.title(f"🧰 {artifact['title']}")
         if artifact.get("locked"):
