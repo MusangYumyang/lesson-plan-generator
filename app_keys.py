@@ -30,19 +30,20 @@ def _from_secrets(name: str) -> str:
 
 
 def secrets_problem(name: str) -> str:
-    """Secrets 에서 name 을 못 찾은 까닭을 키 값 없이 한 줄로 알려 준다. 문제를 모르면 "" 이다."""
+    """Secrets 에서 name 을 못 찾은 까닭을 키 값 없이 한 줄로 알려 준다. 이름은 보여 주되 값은 보여 주지 않는다."""
     try:
         secrets = st.secrets.to_dict()
-    except Exception as ex:  # noqa: BLE001 - 파일이 없을 때(내 컴퓨터)와 형식이 틀렸을 때를 메시지로 가른다
+    except Exception as ex:  # noqa: BLE001 - 파일이 없을 때와 형식이 틀렸을 때를 메시지로 가른다
         if "pars" in str(ex).lower():
             return 'Secrets 글이 TOML 형식이 아니라 읽지 못했습니다. 각 줄을 이름 = "값" 처럼 값에 큰따옴표를 붙여 적어 주세요.'
-        return ""
+        return "올린 곳이라면 이 앱의 Secrets 가 비어 있습니다. Save 를 눌렀는지, 다른 앱에 넣지 않았는지 확인하세요."
     if name in secrets:
-        return ""
+        return f"Secrets 에 {name} 는 있지만 값이 비어 있습니다."
     for section, values in secrets.items():
         if isinstance(values, dict) and name in values:
             return f"{name} 가 [{section}] 아래에 있습니다. [{section}] 줄을 지워 키를 맨 위에 두세요."
-    return ""
+    names = ", ".join(secrets) or "(없음)"
+    return f"Secrets 에 있는 이름: {names}. 이 중에 {name} 가 없으니 이름 철자를 확인하세요."
 
 
 def get_key(name: str) -> str:
