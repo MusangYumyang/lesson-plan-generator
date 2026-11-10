@@ -335,7 +335,7 @@ def init_state() -> None:
     ss = st.session_state
     ss.setdefault("screen", LANDING_SCREEN)
     ss.setdefault("topic", "")
-    ss.setdefault("level", "중급 (AI 챗봇을 써 본 수강생)")
+    ss.setdefault("level", "중급")
     ss.setdefault("duration", 90)
     ss.setdefault("overlaps", [])
     ss.setdefault("current_lesson_id", None)
@@ -684,7 +684,7 @@ def screen_topic() -> None:
         with col1:
             level = st.selectbox(
                 "수강생 수준",
-                ["입문 (AI 챗봇을 처음 써 봄)", "중급 (AI 챗봇을 써 본 수강생)", "심화 (프롬프트를 직접 다듬어 봄)"],
+                ["입문", "중급", "심화"],
                 index=1,
             )
         with col2:
