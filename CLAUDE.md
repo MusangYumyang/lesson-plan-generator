@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this workspace is
 
-This is primarily a requirements/planning workspace with a single-file Streamlit MVP ([app.py](app.py)). Run it with `pip install -r requirements.txt` then `streamlit run app.py`; it needs `ANTHROPIC_API_KEY`. There is no build system, linter, or test suite — do not invent one. It is not a git repository. The workspace defines the MVP for a lesson-plan (교안) and artifact auto-generator used by a solo offline AI instructor who teaches senior learners 5 days/week and needs a new lesson topic prepared each time.
+This is primarily a requirements/planning workspace with a single-file Streamlit MVP ([app.py](app.py)). Run it with `pip install -r requirements.txt` then `streamlit run app.py`; it needs `ANTHROPIC_API_KEY`. There is no build system, linter, or test suite — do not invent one. It is a git repository: work is committed on `main` and pushed to GitHub (`origin`), and the app is deployed on Streamlit Community Cloud. `.env` is git-ignored and never committed. The workspace defines the MVP for a lesson-plan (교안) and artifact auto-generator used by a solo offline AI instructor who teaches senior learners 5 days/week and needs a new lesson topic prepared each time.
 
 Core flow: 강의 주제 입력 (enter lecture topic) → 상세 교안·아티팩트 생성 (generate detailed lesson plan + artifact) → 저장된 목록 관리 (manage saved list) → 오픈채팅방 공유 (share via KakaoTalk open chat). A generated lesson plan must be detailed enough to teach directly from — not a one-page summary.
 
