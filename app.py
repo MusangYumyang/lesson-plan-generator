@@ -35,6 +35,7 @@ from ai_log import render_ai_logs, save_log
 from app_keys import get_key, load_keys, secrets_problem
 from guestbook import render_guestbook
 from korean_page import korean_page
+from rooms import render_materials, render_showcase
 
 # ---------------------------------------------------------------------------
 # 설정
@@ -60,6 +61,7 @@ THEME_TEXT = "#E8EAF6"
 THEME_ACCENT = "#7C5CFF"  # 성운·버튼 강조색
 GUESTBOOK_SCREEN = "한 줄 방명록"  # 사이드바 버튼으로만 진입하는 부가 화면
 AI_LOG_SCREEN = "AI 기록"  # 사이드바 버튼으로만 진입하는 부가 화면 (Supabase ai_logs 표)
+MATERIALS_SCREEN = "자료방 관리"  # 강사가 자료방에 자료를 올리는 화면 (rooms.py, Supabase materials)
 
 # 오른쪽 아래 상담 챗봇은 helper.py 와 같은 방식으로 Gemini 를 부른다
 # (https://ai.google.dev/gemini-api/docs/interactions)
@@ -1175,6 +1177,38 @@ def screen_list() -> None:
 # ---------------------------------------------------------------------------
 # 공유 링크로 열었을 때 (수강생용 읽기 전용 화면)
 # ---------------------------------------------------------------------------
+# 수강생용 방 (idea/flow.md 의 자료방·결과물방). 화면은 rooms.py
+# 공유 링크의 kind 는 materials / results 인데, 결과물방의 Supabase 표·버킷 이름은 results 가 아니라 showcase 다
+STUDENT_ROOMS = {
+    "materials": ("📚", "자료방", "강사가 올린 교재자료를 주제별로 보고 내려받는 곳입니다."),
+    "results": ("🖼️", "결과물방", "여러분이 만든 실습 결과물을 올리고 서로 보는 곳입니다."),
+}
+
+
+def student_view_picker() -> None:
+    """사이드바의 「수강생 화면으로 보기」. 실습 아티팩트·자료방·결과물방 중 골라 새 탭에서 연다."""
+    with st.popover("🙋 수강생 화면으로 보기", use_container_width=True):
+        st.markdown("**어느 화면을 볼까요?** (새 탭에서 열립니다)")
+
+        st.markdown("🧰 **실습 아티팩트**")
+        artifacts = sorted(mine(load_store()["artifacts"]), key=lambda a: a["created_at"], reverse=True)
+        if artifacts:
+            ids = [a["id"] for a in artifacts]
+            current = st.session_state.get("current_artifact_id")
+            chosen = st.selectbox(
+                "아티팩트 고르기", ids, index=ids.index(current) if current in ids else 0,
+                format_func=lambda i: next(f"{'🔒 ' if a.get('locked') else ''}{a['title']}"
+                                           for a in artifacts if a["id"] == i),
+                key="student_view_artifact", label_visibility="collapsed",
+            )
+            st.link_button("실습 아티팩트 열기", share_url("artifact", chosen), use_container_width=True)
+        else:
+            st.caption("아직 만든 아티팩트가 없습니다. 교안 화면의 아티팩트 탭에서 만들 수 있습니다.")
+
+        for kind, (icon, name, _) in STUDENT_ROOMS.items():
+            st.link_button(f"{icon} {name} 열기", share_url(kind, OWNER), use_container_width=True)
+
+
 def screen_shared(share: str) -> None:
     kind, _, item_id = share.partition(":")
     if kind == "lesson":
@@ -1204,6 +1238,16 @@ def screen_shared(share: str) -> None:
         tab_input, tab_guide = st.tabs(["✍️ 조건 넣기", "📖 사용법"])
         prompt_generator_form(artifact, key_prefix="student", allow_generate=not artifact.get("locked"),
                               guide_area=tab_guide, form_area=tab_input, result_area=tab_input)
+        return
+
+    # 링크 뒤의 id 는 강사(OWNER). 방 안의 자료는 그 강사 것만 보인다
+    if kind == "materials":
+        render_materials(item_id, can_upload=False)
+        return
+    if kind == "results":  # 표·버킷 이름은 showcase
+        lessons = sorted((l for l in load_store()["lessons"] if l.get("owner") == item_id),
+                         key=lambda l: l["created_at"], reverse=True)
+        render_showcase(item_id, list(dict.fromkeys(l["title"] for l in lessons)))
         return
 
     st.error("올바르지 않은 공유 링크입니다.")
@@ -1444,10 +1488,10 @@ def main() -> None:
         if st.button(f"🗂 {AI_LOG_SCREEN}", use_container_width=True,
                      disabled=current == AI_LOG_SCREEN):
             go(AI_LOG_SCREEN)
-        # 지금 보고 있는 아티팩트의 수강생 공유 화면을 새 탭에서 연다
-        artifact_id = st.session_state.get("current_artifact_id") or ""
-        st.link_button("🙋 수강생 화면으로 보기", share_url("artifact", artifact_id), use_container_width=True,
-                       disabled=not reachable["프롬프트 생성기"])
+        if st.button(f"📚 {MATERIALS_SCREEN}", use_container_width=True,
+                     disabled=current == MATERIALS_SCREEN):
+            go(MATERIALS_SCREEN)
+        student_view_picker()
 
     screen = st.session_state["screen"]
     if screen == "주제 입력":
@@ -1464,6 +1508,8 @@ def main() -> None:
         screen_guestbook()
     elif screen == AI_LOG_SCREEN:
         screen_ai_logs()
+    elif screen == MATERIALS_SCREEN:
+        render_materials(OWNER, can_upload=True, share_link=share_url("materials", OWNER))
 
     chat_widget()
 
