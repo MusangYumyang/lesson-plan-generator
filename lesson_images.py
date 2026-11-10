@@ -1,7 +1,7 @@
 ﻿"""교안 그림 보관함 — Supabase Storage `lesson_images` 버킷에 그림을 올리고, 올라온 그림을 모두 보여 줍니다.
 
 실행: streamlit run lesson_images.py
-필요: .env 에 SUPABASE_URL, SUPABASE_KEY (guestbook.py 와 같은 값)
+필요: .env (올린 곳에서는 Secrets) 에 SUPABASE_URL, SUPABASE_KEY (guestbook.py 와 같은 값)
 
 버킷과 허용(올리기 insert, 보기 select)은 Supabase 대시보드에서 미리 만들어 둡니다.
 버킷이 비공개여도 보이도록 그림 주소는 서명된 주소(SIGNED_URL_SECONDS 동안 유효)로 만든다.
@@ -98,7 +98,7 @@ def render_lesson_images() -> None:
             try:
                 upload_image(f.name, f.getvalue(), f.type or "application/octet-stream")
                 st.success(f"{f.name} 을(를) 올렸습니다.")
-            except RuntimeError as e:  # .env 값이 비어 있을 때
+            except RuntimeError as e:  # .env·Secrets 값이 비어 있을 때
                 st.error(str(e))
                 st.stop()
             except Exception as e:  # noqa: BLE001

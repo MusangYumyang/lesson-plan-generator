@@ -2,7 +2,7 @@
 
 app.py 가 AI 를 부르는 네 곳(교안 생성, 아티팩트 설계, 프롬프트 생성기, 상담 챗봇)에서 save_log() 를 부르고,
 사이드바의 'AI 기록' 버튼으로 render_ai_logs() 화면을 엽니다.
-필요: .env 에 SUPABASE_URL, SUPABASE_KEY (guestbook.py 와 같은 값)
+필요: .env (올린 곳에서는 Secrets) 에 SUPABASE_URL, SUPABASE_KEY (guestbook.py 와 같은 값)
 
 Supabase 에 만들어 둔 표 (열: id, created_at, question, answer):
 
@@ -60,7 +60,7 @@ def render_ai_logs() -> None:
 
     try:
         rows = fetch_logs(day)
-    except RuntimeError as e:  # .env 값이 비어 있을 때
+    except RuntimeError as e:  # .env·Secrets 값이 비어 있을 때
         st.error(str(e))
         return
     except Exception as e:  # noqa: BLE001

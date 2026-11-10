@@ -8,9 +8,11 @@
 
 환경 변수:
   ANTHROPIC_API_KEY  Claude API 키 (필수)
-  GEMINI_API_KEY     Gemini API 키. 오른쪽 아래 상담 챗봇에서만 쓴다 (.env 에서 읽음)
+  GEMINI_API_KEY     Gemini API 키. 오른쪽 아래 상담 챗봇에서만 쓴다
   INSTRUCTOR_ID      강사 식별자. 저장 데이터는 이 값으로 분리된다 (기본값: local-instructor)
   APP_BASE_URL       공유 링크에 쓸 기본 주소 (기본값: http://localhost:8501)
+
+  내 컴퓨터에서는 .env, Streamlit Community Cloud 에서는 배포 설정의 Secrets 에서 같은 이름으로 읽는다 (app_keys.py)
 """
 
 from __future__ import annotations
@@ -26,10 +28,10 @@ import uuid
 
 import anthropic
 import streamlit as st
-from dotenv import load_dotenv
 from google import genai
 
 from ai_log import render_ai_logs, save_log
+from app_keys import load_keys
 from guestbook import render_guestbook
 from korean_page import korean_page
 
@@ -42,6 +44,9 @@ FALLBACK_BETA = "server-side-fallback-2026-07-01"
 APP_DIR = pathlib.Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
 STORE_PATH = DATA_DIR / "store.json"
+
+# 내 컴퓨터에서는 .env, 올린 곳(Streamlit Community Cloud)에서는 Secrets 의 키를 os.environ 에 넣는다
+load_keys()
 
 OWNER = os.environ.get("INSTRUCTOR_ID", "local-instructor")
 BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8501").rstrip("/")
@@ -61,9 +66,6 @@ GEMINI_KEY_NAME = "GEMINI_API_KEY"
 # 공식 모델 목록의 안정 모델 중 가장 빠른 것 (https://ai.google.dev/gemini-api/docs/models)
 CHAT_MODEL = "gemini-3.5-flash-lite"
 CHAT_TIMEOUT_SECONDS = 30  # 이 시간(초) 안에 답이 없으면 기다리지 않고 안내를 띄운다
-
-# override=True: .env 를 고친 뒤 화면만 새로 고쳐도 새 값을 읽는다
-load_dotenv(APP_DIR / ".env", override=True)
 
 st.set_page_config(page_title="교안 자동 생성기", page_icon="📘", layout="centered")
 korean_page()  # 크롬이 영어 페이지로 알고 다시 번역하지 않게 한다
@@ -1213,7 +1215,7 @@ def chat_widget() -> None:
 
         api_key = os.environ.get(GEMINI_KEY_NAME, "").strip()
         if not api_key:
-            st.error(f"키 없음. .env 에 {GEMINI_KEY_NAME}=... 줄이 있는지 확인하세요.")
+            st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {GEMINI_KEY_NAME} 가 있는지 확인하세요.")
             return
 
         log = st.container(height=300)
@@ -1280,7 +1282,7 @@ def main() -> None:
         return
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        st.warning("ANTHROPIC_API_KEY 환경 변수가 없습니다. 교안·프롬프트 생성은 실패합니다.")
+        st.warning("ANTHROPIC_API_KEY 가 없습니다 (.env 또는 Secrets). 교안·프롬프트 생성은 실패합니다.")
 
     with st.sidebar:
         if st.button("← 첫 화면으로", key="nav_landing", use_container_width=True):

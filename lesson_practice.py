@@ -1,18 +1,18 @@
 """교안 관리 — Supabase `lesson_practice` 표를 보고, 수업 시간을 고치고, 잠그거나 풀고, 지웁니다.
 
 실행: streamlit run lesson_practice.py
-필요: .env 에 SUPABASE_URL, SUPABASE_KEY
+필요: .env (올린 곳에서는 Secrets) 에 SUPABASE_URL, SUPABASE_KEY
 
 잠긴 교안은 풀기 전까지 수업 시간을 고치거나 지울 수 없습니다.
 쓰기 요청은 모두 고른 줄의 id 를 조건으로 걸어, 그 한 줄만 바뀝니다.
 """
 
 import datetime as dt
-import pathlib
 
 import streamlit as st
-from dotenv import dotenv_values
 from supabase import Client, create_client
+
+from app_keys import get_key
 
 TABLE = "lesson_practice"
 COLUMNS = "id, created_at, title, topic, minutes, locked"
@@ -23,12 +23,11 @@ NO_CHANGE = "바뀐 줄이 없습니다. 이미 지워졌거나 잠겼을 수 �
 
 @st.cache_resource
 def get_client() -> Client:
-    # os.environ 은 보지 않는다: 시스템 환경 변수가 아니라 .env 의 값만 쓰기 위해서다
-    env = dotenv_values(pathlib.Path(__file__).with_name(".env"))
-    url = (env.get("SUPABASE_URL") or "").strip()
-    key = (env.get("SUPABASE_KEY") or "").strip()
+    # os.environ 은 보지 않는다: 시스템 환경 변수가 아니라 .env (올린 곳에서는 Secrets) 의 값만 쓰기 위해서다
+    url = get_key("SUPABASE_URL")
+    key = get_key("SUPABASE_KEY")
     if not url or not key:
-        raise RuntimeError(".env 의 SUPABASE_URL / SUPABASE_KEY 가 비어 있습니다.")
+        raise RuntimeError(".env (올린 곳에서는 Secrets) 의 SUPABASE_URL / SUPABASE_KEY 가 비어 있습니다.")
     return create_client(url, key)
 
 
@@ -148,7 +147,7 @@ def render_lesson_practice() -> None:
 
     try:
         rows = fetch_lessons(get_client())
-    except RuntimeError as e:  # .env 값이 비어 있을 때
+    except RuntimeError as e:  # .env·Secrets 값이 비어 있을 때
         st.error(str(e))
         return
     except Exception as e:  # noqa: BLE001

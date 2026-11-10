@@ -17,7 +17,7 @@
 문서에 이미 있는 내용을 새 지침에 복사하지 말고 위 링크를 참고한다. 요구사항이나 흐름이 바뀌면 관련 문서와 `tasks.md`를 함께 갱신한다.
 
 ## 작업 원칙
-- 애플리케이션 코드는 [app.py](app.py) 하나(Streamlit + Anthropic Python SDK. 단, 화면 오른쪽 아래 미니 `상담 챗봇`(문의 답변 초안)만 google-genai 로 Gemini 를 부르고 `.env` 의 `GEMINI_API_KEY` 를 쓴다)이며, `pip install -r requirements.txt` 후 `streamlit run app.py`로 실행한다. 데이터는 `data/store.json`에 강사별(`INSTRUCTOR_ID`)로 저장된다. 배포 방식과 Notion SDK는 아직 정해지지 않았으므로 근거 없이 가정하지 않는다.
+- 애플리케이션 코드는 [app.py](app.py) 하나(Streamlit + Anthropic Python SDK. 단, 화면 오른쪽 아래 미니 `상담 챗봇`(문의 답변 초안)만 google-genai 로 Gemini 를 부르고 `GEMINI_API_KEY` 를 쓴다)이며, `pip install -r requirements.txt` 후 `streamlit run app.py`로 실행한다. 데이터는 `data/store.json`에 강사별(`INSTRUCTOR_ID`)로 저장된다. 키(`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `KAKAO_REST_API_KEY`, `INSTRUCTOR_ID`, `APP_BASE_URL`)는 [app_keys.py](app_keys.py) 가 같은 이름으로 내 컴퓨터에서는 `.env`, Streamlit Community Cloud 에 올린 곳에서는 배포 설정의 Secrets 에서 읽는다(둘 다 있으면 `.env` 가 먼저, 둘 다 없어도 오류 없이 화면이 뜬다). 화면 파일에서 키를 읽을 때는 `.env` 를 직접 읽지 말고 이 파일을 쓴다. Notion SDK는 아직 정해지지 않았으므로 근거 없이 가정하지 않는다.
 - 구현 전에 요구사항 문서에서 해당 기능의 범위와 비목표를 확인한다.
 - PC와 모바일 양쪽에서 사용할 수 있어야 하며, 교안 내용은 추상적인 설명 대신 실제 클릭 경로와 개별 실습 단계를 포함해야 한다.
 - 수강생을 조별·짝꿍 활동으로 전제하지 않고, 수업 대상은 AI에 어느 정도 익숙한 시니어 학습자로 본다.

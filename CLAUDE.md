@@ -23,7 +23,7 @@ Key docs it points to:
 
 ## Working principles
 
-- The only application code is [app.py](app.py) (Streamlit + Anthropic Python SDK, data in `data/store.json` scoped by `INSTRUCTOR_ID`). The exception is the floating bottom-right `상담 챗봇` widget (inquiry → reply draft), which calls Gemini via google-genai using `GEMINI_API_KEY` from `.env`. Don't assume a deployment target or Notion SDK without evidence in these docs.
+- The only application code is [app.py](app.py) (Streamlit + Anthropic Python SDK, data in `data/store.json` scoped by `INSTRUCTOR_ID`). The exception is the floating bottom-right `상담 챗봇` widget (inquiry → reply draft), which calls Gemini via google-genai using `GEMINI_API_KEY`. Keys (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `KAKAO_REST_API_KEY`, `INSTRUCTOR_ID`, `APP_BASE_URL`) are read by [app_keys.py](app_keys.py) under the same names from `.env` locally and from the deployment's Secrets on Streamlit Community Cloud (`.env` wins if both exist; neither existing must not crash the screen). Screen files should get keys through it rather than reading `.env` directly. Don't assume a Notion SDK without evidence in these docs.
 - Before implementing anything, check the relevant requirement doc for scope and non-goals first.
 - Design must work on both PC and mobile.
 - Lesson plans need concrete click-by-click steps and individual practice steps, not abstract descriptions.

@@ -1,7 +1,7 @@
 """한 줄 방명록 — Supabase `guestbook` 표에 글이 쌓입니다.
 
 실행: streamlit run guestbook.py  (또는 app.py 사이드바의 '한 줄 방명록' 버튼)
-필요: .env 에 SUPABASE_URL, SUPABASE_KEY
+필요: .env (올린 곳에서는 Secrets) 에 SUPABASE_URL, SUPABASE_KEY
 
 Supabase SQL Editor에서 표를 먼저 만들어 두세요:
 
@@ -19,10 +19,11 @@ Supabase SQL Editor에서 표를 먼저 만들어 두세요:
 import os
 
 import streamlit as st
-from dotenv import load_dotenv
 from supabase import Client, create_client
 
-load_dotenv()
+from app_keys import load_keys
+
+load_keys()
 
 TABLE = "guestbook"
 MAX_NAME = 20
@@ -35,7 +36,7 @@ def get_client() -> Client:
     url = os.environ.get("SUPABASE_URL", "").strip()
     key = os.environ.get("SUPABASE_KEY", "").strip()
     if not url or not key:
-        raise RuntimeError(".env 의 SUPABASE_URL / SUPABASE_KEY 가 비어 있습니다.")
+        raise RuntimeError(".env (올린 곳에서는 Secrets) 의 SUPABASE_URL / SUPABASE_KEY 가 비어 있습니다.")
     return create_client(url, key)
 
 

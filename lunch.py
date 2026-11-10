@@ -20,7 +20,8 @@ import pandas as pd
 import pydeck as pdk
 import requests
 import streamlit as st
-from dotenv import load_dotenv
+
+from app_keys import load_keys
 
 # 확인할 키 이름. .env 에 들어 있는 이름과 같아야 한다.
 KEY_NAME = "KAKAO_REST_API_KEY"
@@ -422,8 +423,8 @@ def show_results(result):
     )
 
 
-# override=True: .env 를 고친 뒤 화면만 새로 고쳐도 새 값을 읽는다
-load_dotenv(pathlib.Path(__file__).with_name(".env"), override=True)
+# 내 컴퓨터에서는 .env, 올린 곳에서는 Secrets 의 키를 os.environ 에 넣는다
+load_keys()
 api_key = os.environ.get(KEY_NAME, "").strip()
 
 st.set_page_config(page_title="점심 맛집 대시보드", page_icon="🍽️", layout="wide")
@@ -431,7 +432,7 @@ st.title("🍽️ 점심 맛집 대시보드")
 st.caption("카카오 로컬 API 에는 평점·리뷰가 없습니다. 거리와 업종으로 고르고, 후기는 카카오맵 링크에서 확인하세요.")
 
 if not api_key:
-    st.error(f"키 없음. .env 에 {KEY_NAME}=... 줄이 있는지 확인하세요.")
+    st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {KEY_NAME} 가 있는지 확인하세요.")
     st.stop()
 
 # busy: 답을 기다리는 중인지. 기다리는 동안은 버튼을 잠가 두 번 부르지 않게 한다.

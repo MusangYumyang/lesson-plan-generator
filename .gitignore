@@ -27,3 +27,6 @@ Thumbs.db
 desktop.ini
 .DS_Store
 idea/hero.png
+
+# Streamlit 비밀 설정 (올린 곳에서는 배포 설정의 Secrets 에 넣는다)
+.streamlit/secrets.toml

@@ -11,8 +11,9 @@ import os
 import pathlib
 
 import streamlit as st
-from dotenv import load_dotenv
 from google import genai
+
+from app_keys import load_keys
 
 # 확인할 키 이름. .env 에 들어 있는 이름과 같아야 한다.
 KEY_NAME = "GEMINI_API_KEY"
@@ -21,8 +22,8 @@ MODEL = "gemini-3.5-flash"
 # 이 시간(초) 안에 답이 없으면 기다리지 않고 안내를 띄운다
 TIMEOUT_SECONDS = 30
 
-# override=True: .env 를 고친 뒤 화면만 새로 고쳐도 새 값을 읽는다
-load_dotenv(pathlib.Path(__file__).with_name(".env"), override=True)
+# 내 컴퓨터에서는 .env, 올린 곳에서는 Secrets 의 키를 os.environ 에 넣는다
+load_keys()
 api_key = os.environ.get(KEY_NAME, "").strip()
 
 st.set_page_config(page_title="챗봇", page_icon="💬")
@@ -31,7 +32,7 @@ st.title("💬 챗봇")
 if api_key:
     st.success("키 있음")
 else:
-    st.error(f"키 없음. .env 에 {KEY_NAME}=... 줄이 있는지 확인하세요.")
+    st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {KEY_NAME} 가 있는지 확인하세요.")
     st.stop()
 
 # busy: 답을 기다리는 중인지. 기다리는 동안은 버튼을 잠가 두 번 보내지 않게 한다.
