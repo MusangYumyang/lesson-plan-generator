@@ -1,7 +1,7 @@
 """교안·아티팩트 자동 생성기 (Streamlit MVP)
 
 화면 흐름 (idea/flow.md):
-  강의 주제 입력 → 기존 자료 확인 → 교안 및 아티팩트 → 프롬프트 생성기 / 저장된 목록 → 오픈채팅방 공유
+  (첫 화면 →) 강의 주제 입력 →기존 자료 확인 → 교안 및 아티팩트 → 프롬프트 생성기 / 저장된 목록 → 오픈채팅방 공유
 
 실행:
   streamlit run app.py
@@ -15,10 +15,12 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import json
 import os
 import pathlib
+import random
 import re
 import uuid
 
@@ -45,6 +47,11 @@ OWNER = os.environ.get("INSTRUCTOR_ID", "local-instructor")
 BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8501").rstrip("/")
 
 SCREENS = ["주제 입력", "기존 자료 확인", "교안 및 아티팩트", "프롬프트 생성기", "저장된 목록"]
+LANDING_SCREEN = "첫 화면"  # 서비스 소개 화면. 공유 링크(?share=)로 들어오면 거치지 않는다
+# 앱 전체 테마 색. 위젯 색은 .streamlit/config.toml 의 [theme] 이 같은 값으로 맞춘다
+THEME_BG = "#0B1020"  # 우주 배경
+THEME_TEXT = "#E8EAF6"
+THEME_ACCENT = "#7C5CFF"  # 성운·버튼 강조색
 GUESTBOOK_SCREEN = "한 줄 방명록"  # 사이드바 버튼으로만 진입하는 부가 화면
 AI_LOG_SCREEN = "AI 기록"  # 사이드바 버튼으로만 진입하는 부가 화면 (Supabase ai_logs 표)
 
@@ -68,7 +75,9 @@ st.markdown(
       .stButton > button { width: 100%; min-height: 3rem; font-size: 1.05rem; }
       textarea, input { font-size: 1.05rem !important; }
       .block-container { padding-top: 1.5rem; padding-bottom: 3rem; max-width: 56rem; }
-      .small-muted { color: #6b7280; font-size: 0.9rem; }
+      .small-muted { color: #9AA3BF; font-size: 0.9rem; }
+      /* 주요 버튼은 라임(config.toml 의 primaryColor) 바탕이라 글자를 어둡게 한다 */
+      [data-testid^="stBaseButton-primary"], [data-testid^="stBaseButton-primary"] p { color: #0B1020 !important; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -316,7 +325,7 @@ def describe_api_error(err: Exception) -> str:
 # ---------------------------------------------------------------------------
 def init_state() -> None:
     ss = st.session_state
-    ss.setdefault("screen", "주제 입력")
+    ss.setdefault("screen", LANDING_SCREEN)
     ss.setdefault("topic", "")
     ss.setdefault("level", "중급 (AI 챗봇을 써 본 수강생)")
     ss.setdefault("duration", 90)
@@ -349,6 +358,304 @@ def share_message(lesson: dict | None, artifact: dict | None) -> str:
         lines.append(f"🧰 실습 아티팩트: {artifact['title']}")
         lines.append(share_url("artifact", artifact["id"]))
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 우주 배경 (모든 화면) + 첫 화면 (서비스 소개)
+# ---------------------------------------------------------------------------
+# 하는 일 세 가지: PRD.md 기능 요구사항 1·5·3번 중 지금 실제로 되는 것만 (이미지 생성·로그인은 빼 둠)
+LANDING_FEATURES = [
+    ("교안과 실습 아티팩트를 한 번에",
+     "주제만 넣으면 설명·실습 교안과 프롬프트 생성기가 함께 나옵니다."),
+    ("겹치는 강의부터 확인",
+     "만들기 전에 지금까지 만든 교안과 겹치는지 먼저 보여 줍니다."),
+    ("링크 하나로 수업",
+     "교안과 아티팩트를 오픈채팅방에 공유하고, 필요하면 잠급니다."),
+]
+
+# 우주 배경: 영상 없이 CSS 애니메이션만 쓴다. 움직이는 요소는 별 SPACE_STARS 개 + 행성 3개 (30개를 넘기지 않는다)
+# 성운은 움직이지 않는 옅은 그라데이션 한 겹이다. 첫 화면·기능 화면·수강생 공유 화면 모두에 깐다
+SPACE_STARS = 24
+
+SPACE_CSS = """
+<style>
+  .stApp { background: __BG__; color: __TEXT__; }
+  [data-testid="stHeader"] { background: transparent; }
+  /* 배경 막(space)이 글자 아래에 깔리도록 본문을 쌓임 맥락으로 만들고, 글자 뒤에 어두운 막을 한 겹 깐다 */
+  .block-container { position: relative; z-index: 1; background: rgba(11, 16, 32, 0.72); border-radius: 1rem; }
+  .space { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+           background:
+             /* 성운은 제목(위쪽 가운데)과 겹치지 않게 아래 양쪽 구석에만 둔다 */
+             radial-gradient(ellipse 40% 30% at 8% 92%, color-mix(in srgb, __ACCENT__ 13%, transparent), transparent 70%),
+             radial-gradient(ellipse 35% 28% at 94% 82%, color-mix(in srgb, __ACCENT__ 9%, transparent), transparent 70%),
+             __BG__; }
+  .star { position: absolute; display: block; border-radius: 50%; background: #fff;
+          animation: twinkle ease-in-out infinite alternate; }
+  @keyframes twinkle { from { opacity: 0.15; } to { opacity: 0.9; } }
+  .planet { position: absolute; left: 0; display: block; border-radius: 50%;
+            animation: drift linear infinite; will-change: transform; }
+  /* 화면 왼쪽 밖에서 오른쪽 밖까지 가로지른다. 한 번 지나가는 데 1분이 넘는다 */
+  @keyframes drift {
+    0%   { transform: translate(-30vw, 0); }
+    50%  { transform: translate(50vw, -4vh); }
+    100% { transform: translate(130vw, 0); }
+  }
+  .planet.p1 { width: 120px; height: 120px; top: 14%; animation-duration: 160s; animation-delay: -60s;
+               background: radial-gradient(circle at 32% 30%, #9c8cff, #4a3aa8 55%, #1b1640 100%); opacity: 0.85; }
+  .planet.p2 { width: 56px; height: 56px; top: 68%; animation-duration: 110s; animation-delay: -85s;
+               background: radial-gradient(circle at 32% 30%, #f3c98b, #b0672e 60%, #3d2210 100%); opacity: 0.8; }
+  .planet.p2::after { content: ""; position: absolute; left: -35%; top: 40%; width: 170%; height: 20%;
+                      border: 2px solid rgba(243, 201, 139, 0.45); border-radius: 50%; transform: rotate(-18deg); }
+  .planet.p3 { width: 28px; height: 28px; top: 42%; animation-duration: 220s; animation-delay: -30s;
+               background: radial-gradient(circle at 32% 30%, #9fe3dc, #2f8a86 60%, #0e2e30 100%); opacity: 0.75; }
+  @media (prefers-reduced-motion: reduce) { .star, .planet { animation: none; } }
+</style>
+"""
+
+def _themed(css: str) -> str:
+    return css.replace("__BG__", THEME_BG).replace("__TEXT__", THEME_TEXT).replace("__ACCENT__", THEME_ACCENT)
+
+
+def render_space() -> None:
+    """별 자리·크기·반짝임 속도를 고정 시드로 정해, 화면을 다시 그려도 별이 튀지 않게 한다."""
+    rng = random.Random(7)
+    stars = "".join(
+        f"<span class='star' style='left:{rng.uniform(0, 100):.1f}%;top:{rng.uniform(0, 100):.1f}%;"
+        f"width:{(size := rng.choice([1, 1, 2, 2, 3]))}px;height:{size}px;"
+        f"animation-duration:{rng.uniform(4, 11):.1f}s;animation-delay:-{rng.uniform(0, 11):.1f}s'></span>"
+        for _ in range(SPACE_STARS)
+    )
+    planets = "<span class='planet p1'></span><span class='planet p2'></span><span class='planet p3'></span>"
+    st.markdown(_themed(SPACE_CSS) + f"<div class='space'>{stars}{planets}</div>", unsafe_allow_html=True)
+
+
+LANDING_CSS = """
+<style>
+  /* 첫 화면 전용. 색은 #0B1020 · #E8ECFF · #7C5CFF 와 그 투명도, 그리고 강조 라임 #A3E635 만 쓴다
+     (rgba(11,16,32) = #0B1020, rgba(232,236,255) = #E8ECFF, rgba(124,92,255) = #7C5CFF)
+     라임은 「시작하기」 버튼 · 제목의 「자동」 · 카드 번호에만. 테두리와 선은 보라, 본문 글자는 밝은 색 그대로.
+     라임에는 그림자·글로우를 주지 않는다 */
+  .space { display: none; }  /* 기능 화면용 우주 배경은 첫 화면에서만 숨기고 아래 장면(.cine)을 깐다 */
+  /* 본문 막은 걷고, 폭 1100px 가운데 정렬. 제목 위는 넉넉히 띄우고 제목~시작하기 묶음을 화면 세로 가운데로 모은다 */
+  .block-container { background: transparent; max-width: 1100px; margin: 0 auto;
+                     min-height: 100vh; min-height: 100dvh;
+                     display: flex; flex-direction: column; justify-content: center;
+                     padding: 96px 24px 64px; }
+  /* 요소 사이 간격은 Streamlit 기본 간격 대신 아래 여백 값으로만 정한다 */
+  .block-container [data-testid="stVerticalBlock"] { gap: 0; }
+  /* 본문 안쪽 묶음이 화면 높이만큼 늘어나 내용이 위에 붙으므로, 그 묶음 안에서도 세로 가운데로 모은다 */
+  .block-container > div { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; }
+
+  /* ---- 배경 장면: 여러 겹이 서로 다른 속도로 움직여 깊이감을 낸다 ----
+     움직이는 요소: 장면 1 + 겹 5 + 성운 2 + 별 3 + 달 1 + 제목 3 + 빛줄 1 + 소개 1 + 카드 3 + 버튼 1 = 21개 (30개 이하)
+     맨 아래는 배경 이미지(idea/hero-bg.jpg, 아래쪽 큰 행성 포함). 화면을 꽉 채우되 비율은 그대로, 창 크기가 바뀌어도 가운데가 보인다.
+     이미지를 받기 전에는 배경색 #0B1020 이 보인다 */
+  .cine { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+          background-color: #0B1020; background-image: __HERO_BG__;
+          background-size: cover; background-position: center; background-repeat: no-repeat;
+          --px: 0; --py: 0;  /* 마우스 위치 (-1~1). LANDING_JS 가 채운다 */
+          animation: cine-dolly 1.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  /* 오프닝: 카메라가 별 사이로 천천히 들어오듯 */
+  @keyframes cine-dolly { from { transform: scale(1.3); opacity: 0; } 35% { opacity: 1; } to { transform: scale(1); opacity: 1; } }
+  .cine-layer { position: absolute; inset: -6%;
+                transform: translate3d(calc(var(--px) * var(--depth)), calc(var(--py) * var(--depth)), 0);
+                transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* 이미지 위 어두운 막. 글자가 놓이는 가운데일수록 더 어둡다. 별·작은 행성은 이 막 위에 있어 그대로 보인다 */
+  .cine-shade { position: absolute; inset: 0;
+                background: radial-gradient(ellipse 75% 65% at 50% 48%, rgba(11, 16, 32, 0.8), rgba(11, 16, 32, 0.55) 60%,
+                                            rgba(11, 16, 32, 0.4)); }
+  .cine-nebula { position: absolute; border-radius: 50%; }
+  .cine-nebula.n1 { width: 70vmax; height: 50vmax; left: -22vmax; bottom: -18vmax;
+                    background: radial-gradient(closest-side, rgba(124, 92, 255, 0.20), transparent);
+                    animation: cine-float 70s ease-in-out infinite alternate, cine-breathe 9s ease-in-out 2s infinite alternate; }
+  .cine-nebula.n2 { width: 50vmax; height: 38vmax; right: -18vmax; top: -14vmax;
+                    background: radial-gradient(closest-side, rgba(124, 92, 255, 0.12), transparent);
+                    animation: cine-float 95s ease-in-out -40s infinite alternate-reverse, cine-breathe 12s ease-in-out 2s infinite alternate; }
+  @keyframes cine-float { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(6vmax, -3vmax, 0); } }
+  @keyframes cine-breathe { from { opacity: 1; } to { opacity: 0.55; } }
+
+  /* 별 겹: 한 칸(--tile) 무늬를 깔고 정확히 한 칸만큼 옆으로 흘려 이음새 없이 반복한다. 가까운 겹일수록 빠르다 */
+  .cine-stars { position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% + var(--tile));
+                background-size: var(--tile) var(--tile); background-repeat: repeat; }
+  @keyframes cine-pan { to { transform: translate3d(calc(-1 * var(--tile)), 0, 0); } }
+  @keyframes cine-twinkle { from { opacity: 1; } to { opacity: 0.45; } }
+  __STAR_TILES__
+
+  .cine-moon { position: absolute; left: 0; top: 16%; width: 44px; height: 44px; border-radius: 50%; opacity: 0.75;
+               background: radial-gradient(circle at 34% 30%, #E8ECFF, rgba(124, 92, 255, 0.55) 55%, #0B1020 100%);
+               animation: cine-cross 200s linear -70s infinite; }
+  @keyframes cine-cross { from { transform: translate3d(-10vw, 0, 0); } 50% { transform: translate3d(50vw, -3vh, 0); }
+                          to { transform: translate3d(110vw, 0, 0); } }
+
+  /* ---- 제목·소개 ---- */
+  .cine-hero { position: relative; text-align: center; }
+  .cine-hero::before { content: ""; position: absolute; inset: -25% -10%; z-index: -1;
+                       background: radial-gradient(closest-side, rgba(11, 16, 32, 0.85), rgba(11, 16, 32, 0)); }
+  /* 제목 56px (좁은 휴대폰에서는 한 줄에 들어가게 줄어든다). 번지는 그림자 없이 또렷하게 */
+  .cine-title { font-size: clamp(36px, 10vw, 56px); font-weight: 800; line-height: 1.15; letter-spacing: -0.01em;
+                color: #E8ECFF; }
+  .cine-title .w { display: inline-block; animation: cine-word 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .cine-title .w:nth-child(1) { animation-delay: 0.1s; }
+  .cine-title .w:nth-child(2) { animation-delay: 0.2s; color: #A3E635; }
+  .cine-title .w:nth-child(3) { animation-delay: 0.3s; }
+  /* 흐릿하고 넓게 퍼진 글자가 1.1초 안에 또렷하게 모인다 */
+  @keyframes cine-word { from { opacity: 0; filter: blur(14px); letter-spacing: 0.5em; transform: translateY(0.25em) scale(1.08); }
+                         to { opacity: 1; filter: blur(0); letter-spacing: -0.01em; transform: none; } }
+  /* 제목과 소개 사이 24px = 빛줄 위 12px + 빛줄 1px + 아래 11px */
+  .cine-rule { width: min(22rem, 70%); height: 1px; margin: 12px auto 0;
+               background: linear-gradient(90deg, transparent, rgba(232, 236, 255, 0.7), transparent);
+               animation: cine-rule 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both, cine-breathe 6s ease-in-out 2s infinite alternate; }
+  @keyframes cine-rule { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+  .cine-lead { font-size: 20px; line-height: 1.7; max-width: 36rem; margin: 11px auto 0; color: #E8ECFF;
+               text-shadow: 0 1px 16px rgba(11, 16, 32, 0.9);
+               animation: cine-rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both; }
+  @keyframes cine-rise-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+  /* ---- 하는 일 세 가지 ---- */
+  /* 소개와 카드 사이 56px, 카드와 시작하기 사이 48px. 넓은 화면은 세 칸(높이 같음), 좁은 화면은 한 줄씩 */
+  .landing-features { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 20px; margin: 56px 0 48px; }
+  @media (min-width: 1000px) { .landing-features { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
+  .landing-card { background: rgba(11, 16, 32, 0.8); border: 1px solid rgba(232, 236, 255, 0.12);
+                  border-top: 3px solid #7C5CFF; border-radius: 0.75rem; padding: 28px; color: #E8ECFF;
+                  animation: cine-rise-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .landing-card:nth-child(1) { animation-delay: 1.0s; }
+  .landing-card:nth-child(2) { animation-delay: 1.1s; }
+  .landing-card:nth-child(3) { animation-delay: 1.2s; }
+  .landing-card .num { color: #A3E635; font-weight: 700; }
+  .landing-card .card-title { font-size: 18px; font-weight: 700; margin: 6px 0 8px; }
+  .landing-card .card-body { font-size: 15px; line-height: 1.7; }
+
+  /* ---- 시작하기: 보이는 순간(1.5초)부터 누를 수 있다. 1.9초에 등장이 모두 끝난다 (2초 안) ---- */
+  .st-key-landing_start { align-items: center; animation: cine-button 0.4s ease-out 1.5s both; }
+  .st-key-landing_start .stButton { display: flex; justify-content: center; }
+  @keyframes cine-button { from { opacity: 0; visibility: hidden; transform: translateY(10px); }
+                           to { opacity: 1; visibility: visible; transform: none; } }
+  .st-key-landing_start button { background: #A3E635 !important; color: #0B1020 !important; border: none !important;
+                                 width: auto !important; min-height: 0 !important; padding: 16px 40px !important;
+                                 font-size: 17px !important; font-weight: 700; }
+  .st-key-landing_start button p { color: #0B1020 !important; font-size: 17px !important; font-weight: 700; }
+  .st-key-landing_start button:hover { filter: brightness(1.1); }
+
+  /* 움직임을 줄이도록 설정한 기기: 애니메이션 없이 바로 완성 화면 */
+  @media (prefers-reduced-motion: reduce) {
+    .cine, .cine *, .cine-hero *, .landing-card, .st-key-landing_start { animation: none !important; transition: none !important; }
+  }
+</style>
+"""
+
+# 별 겹 = 별 크기 세 단계 (작은 별은 멀리·느리게, 큰 별은 가까이·빠르게)
+# (이름, 한 칸 크기 px, 별 수, 별 반지름 px, 밝기 범위, 흐르는 시간 s, 반짝임 시간 s, 마우스 깊이 px)
+# 한 칸을 화면만큼 크게 잡아 무늬가 반복돼 보이지 않게 한다
+CINE_STAR_LAYERS = [
+    ("far", 900, 42, 0.7, (0.2, 0.6), 700, 7, 6),
+    ("mid", 1100, 22, 1.1, (0.35, 0.8), 380, 10, 14),
+    ("near", 1300, 10, 1.7, (0.55, 0.95), 190, 13, 26),
+]
+CINE_CLUSTER_SHARE = 0.7  # 별의 70% 는 몇 군데 무리에 모이고 나머지는 흩어진다
+
+# 마우스를 따라 겹마다 다르게 살짝 움직여 깊이감을 더한다. 마우스가 없는 기기와 움직임 줄이기 설정에서는 하지 않는다
+LANDING_JS = """
+<script>
+(() => {
+  if (window.__cineParallax) return;  // 다시 그려져도 한 번만 붙인다
+  window.__cineParallax = true;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let raf = 0, x = 0, y = 0;
+  window.addEventListener("pointermove", (e) => {
+    if (still.matches || e.pointerType !== "mouse") return;
+    x = (e.clientX / window.innerWidth) * 2 - 1;
+    y = (e.clientY / window.innerHeight) * 2 - 1;
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const cine = document.querySelector(".cine");  // 첫 화면이 아니면 없으니 아무것도 하지 않는다
+      if (cine) {
+        cine.style.setProperty("--px", x.toFixed(3));
+        cine.style.setProperty("--py", y.toFixed(3));
+      }
+    });
+  }, { passive: true });
+})();
+</script>
+"""
+
+
+HERO_BG_PATH = APP_DIR / "idea" / "hero-bg.jpg"  # idea/hero.png 를 가로 1920px JPEG 로 줄인 것
+
+
+@st.cache_resource(show_spinner=False)
+def _hero_bg() -> str:
+    """첫 화면 배경 이미지를 CSS background-image 값으로. 파일이 없으면 none (배경색만 보인다)."""
+    try:
+        data = HERO_BG_PATH.read_bytes()
+    except OSError:
+        return "none"
+    return f'url("data:image/jpeg;base64,{base64.b64encode(data).decode()}")'
+
+
+def _cine_scene() -> tuple[str, str]:
+    """첫 화면 배경 장면의 (별 겹 CSS, HTML). 별 자리는 고정 시드라 열 때마다 같은 하늘이다."""
+    rng = random.Random(11)
+    css, star_layers = [], []
+    for name, tile, count, radius, (dim, bright), pan_s, twinkle_s, depth in CINE_STAR_LAYERS:
+        clusters = [(rng.uniform(0.1, 0.9) * tile, rng.uniform(0.1, 0.9) * tile) for _ in range(3)]
+        dots = []
+        for i in range(count):
+            if rng.random() < CINE_CLUSTER_SHARE:
+                cx, cy = rng.choice(clusters)
+                x, y = rng.gauss(cx, tile * 0.08), rng.gauss(cy, tile * 0.08)
+            else:
+                x, y = rng.uniform(0, tile), rng.uniform(0, tile)
+            # 칸 가장자리에서 별이 잘리지 않게 안쪽으로 넣는다
+            x, y = min(max(x, 4), tile - 4), min(max(y, 4), tile - 4)
+            size = radius * rng.uniform(0.8, 1.2)
+            # 가까운 겹에만 보라색 별을 하나 섞는다
+            color = (f"rgba(124, 92, 255, {bright})" if name == "near" and i == 0
+                     else f"rgba(232, 236, 255, {rng.uniform(dim, bright):.2f})")
+            dots.append(f"radial-gradient(circle at {x:.0f}px {y:.0f}px, "
+                        f"{color} 0 {size:.1f}px, transparent {size + 0.6:.1f}px)")
+        css.append(f".cine-stars.{name} {{ --tile: {tile}px; background-image: {', '.join(dots)};"
+                   f" animation: cine-pan {pan_s}s linear infinite,"
+                   f" cine-twinkle {twinkle_s}s ease-in-out 2s infinite alternate; }}")
+        star_layers.append((depth, f"<div class='cine-stars {name}'></div>"))
+    layer = "<div class='cine-layer' style='--depth: {}px'>{}</div>".format
+    far, mid, near = star_layers
+    html = (
+        "<div class='cine'><div class='cine-shade'></div>"
+        + layer(4,"<div class='cine-nebula n1'></div><div class='cine-nebula n2'></div>")
+        + layer(*far) + layer(*mid)
+        + layer(18, "<div class='cine-moon'></div>")
+        + layer(*near)
+        + "</div>"
+    )
+    return "\n  ".join(css), html
+
+
+def screen_landing() -> None:
+    star_css, scene = _cine_scene()
+    cards = "".join(
+        f"<div class='landing-card'><div class='num'>0{i}</div>"
+        f"<div class='card-title'>{title}</div><div class='card-body'>{body}</div></div>"
+        for i, (title, body) in enumerate(LANDING_FEATURES, start=1)
+    )
+    st.markdown(
+        LANDING_CSS.replace("__STAR_TILES__", star_css).replace("__HERO_BG__", _hero_bg())
+        + scene
+        + "<div class='cine-hero'>"
+        "<div class='cine-title'><span class='w'>교안</span> <span class='w'>자동</span> <span class='w'>생성기</span></div>"
+        "<div class='cine-rule'></div>"
+        # p 로 쓰면 Streamlit 의 문단 여백 규칙이 가운데 정렬(margin: auto)을 덮어써 왼쪽으로 밀린다
+        "<div class='cine-lead'>주 5일, 매번 바뀌는 강의 주제.<br>"
+        "주제만 넣으면 그날 수업에 쓸 교안과 실습 아티팩트가 함께 나옵니다.</div>"
+        "</div>"
+        f"<div class='landing-features'>{cards}</div>",
+        unsafe_allow_html=True,
+    )
+    with st.container(key="landing_start"):
+        if st.button("시작하기", key="landing_start_btn"):
+            go("주제 입력")
+    st.html(LANDING_JS, unsafe_allow_javascript=True)
 
 
 # ---------------------------------------------------------------------------
@@ -961,16 +1268,23 @@ def chat_widget() -> None:
 # ---------------------------------------------------------------------------
 def main() -> None:
     init_state()
+    render_space()
 
     share = st.query_params.get("share")
     if share:
         screen_shared(share)
         return
 
+    if st.session_state["screen"] == LANDING_SCREEN:
+        screen_landing()
+        return
+
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         st.warning("ANTHROPIC_API_KEY 환경 변수가 없습니다. 교안·프롬프트 생성은 실패합니다.")
 
     with st.sidebar:
+        if st.button("← 첫 화면으로", key="nav_landing", use_container_width=True):
+            go(LANDING_SCREEN)
         st.markdown(f"**강사:** {OWNER}")
         st.markdown(f"**모델:** {MODEL}")
         st.markdown("---")

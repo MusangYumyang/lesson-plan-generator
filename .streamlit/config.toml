@@ -1,0 +1,8 @@
+# 앱 전체 테마 (첫 화면의 우주 배경과 같은 색). app.py 의 THEME_* 값과 맞춰 둔다
+# primaryColor 는 강조 라임: 주요 버튼·슬라이더·선택된 탭·입력칸 테두리 등. 주요 버튼 글자색(#0B1020)은 app.py 의 전역 CSS 에서 정한다
+[theme]
+base = "dark"
+primaryColor = "#A3E635"
+backgroundColor = "#0B1020"
+secondaryBackgroundColor = "#161C36"
+textColor = "#E8EAF6"
