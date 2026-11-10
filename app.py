@@ -31,7 +31,7 @@ import streamlit as st
 from google import genai
 
 from ai_log import render_ai_logs, save_log
-from app_keys import get_key, load_keys
+from app_keys import get_key, load_keys, secrets_problem
 from guestbook import render_guestbook
 from korean_page import korean_page
 
@@ -1221,7 +1221,8 @@ def chat_widget() -> None:
 
         api_key = get_key(GEMINI_KEY_NAME)
         if not api_key:
-            st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {GEMINI_KEY_NAME} 가 있는지 확인하세요.")
+            st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {GEMINI_KEY_NAME} 가 있는지 확인하세요. "
+                     + secrets_problem(GEMINI_KEY_NAME))
             return
 
         log = st.container(height=300)
@@ -1288,7 +1289,8 @@ def main() -> None:
         return
 
     if not (get_key("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        st.warning("ANTHROPIC_API_KEY 가 없습니다 (.env 또는 Secrets). 교안·프롬프트 생성은 실패합니다.")
+        st.warning("ANTHROPIC_API_KEY 가 없습니다 (.env 또는 Secrets). 교안·프롬프트 생성은 실패합니다. "
+                   + secrets_problem("ANTHROPIC_API_KEY"))
 
     with st.sidebar:
         if st.button("← 첫 화면으로", key="nav_landing", use_container_width=True):

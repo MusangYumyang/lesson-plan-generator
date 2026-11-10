@@ -29,6 +29,22 @@ def _from_secrets(name: str) -> str:
     return "" if value is None else str(value).strip()
 
 
+def secrets_problem(name: str) -> str:
+    """Secrets 에서 name 을 못 찾은 까닭을 키 값 없이 한 줄로 알려 준다. 문제를 모르면 "" 이다."""
+    try:
+        secrets = st.secrets.to_dict()
+    except Exception as ex:  # noqa: BLE001 - 파일이 없을 때(내 컴퓨터)와 형식이 틀렸을 때를 메시지로 가른다
+        if "pars" in str(ex).lower():
+            return 'Secrets 글이 TOML 형식이 아니라 읽지 못했습니다. 각 줄을 이름 = "값" 처럼 값에 큰따옴표를 붙여 적어 주세요.'
+        return ""
+    if name in secrets:
+        return ""
+    for section, values in secrets.items():
+        if isinstance(values, dict) and name in values:
+            return f"{name} 가 [{section}] 아래에 있습니다. [{section}] 줄을 지워 키를 맨 위에 두세요."
+    return ""
+
+
 def get_key(name: str) -> str:
     """.env 의 값을 먼저 보고, 비어 있으면 Secrets 를 본다. 시스템 환경 변수(os.environ)는 보지 않는다."""
     return (dotenv_values(ENV_PATH).get(name) or "").strip() or _from_secrets(name)
