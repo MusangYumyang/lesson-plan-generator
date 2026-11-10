@@ -15,6 +15,9 @@ data/
 # 백업 폴더
 99_backup/
 
+# 공모전 제출용 파일
+제출용/
+
 # 내 컴퓨터 전용 설정
 .vscode/
 .claude/settings.local.json
