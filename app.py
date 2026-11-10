@@ -31,7 +31,7 @@ import streamlit as st
 from google import genai
 
 from ai_log import render_ai_logs, save_log
-from app_keys import load_keys
+from app_keys import get_key, load_keys
 from guestbook import render_guestbook
 from korean_page import korean_page
 
@@ -248,8 +248,14 @@ PROMPT_SYSTEM = """당신은 시니어 AI 수업에서 쓰는 프롬프트 작�
 
 
 @st.cache_resource(show_spinner=False)
+def _make_client(api_key: str) -> anthropic.Anthropic:
+    # 키를 인자로 받아 키마다 따로 캐시한다: 키 없이 만든 클라이언트가 Secrets 를 넣은 뒤에도 남아 있지 않게
+    # 빈 키는 None 으로 넘겨 SDK 가 ANTHROPIC_AUTH_TOKEN 등 다른 인증 수단을 찾게 둔다
+    return anthropic.Anthropic(api_key=api_key or None)
+
+
 def get_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic()
+    return _make_client(get_key("ANTHROPIC_API_KEY"))
 
 
 class GenerationRefused(RuntimeError):
@@ -1213,7 +1219,7 @@ def chat_widget() -> None:
             ss.update(chat_log=[], chat_last_id=None, chat_notice="")
             st.rerun()
 
-        api_key = os.environ.get(GEMINI_KEY_NAME, "").strip()
+        api_key = get_key(GEMINI_KEY_NAME)
         if not api_key:
             st.error(f"키 없음. .env (올린 곳에서는 Secrets) 에 {GEMINI_KEY_NAME} 가 있는지 확인하세요.")
             return
@@ -1281,7 +1287,7 @@ def main() -> None:
         screen_landing()
         return
 
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+    if not (get_key("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         st.warning("ANTHROPIC_API_KEY 가 없습니다 (.env 또는 Secrets). 교안·프롬프트 생성은 실패합니다.")
 
     with st.sidebar:
